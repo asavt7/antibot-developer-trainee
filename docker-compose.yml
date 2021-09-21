@@ -1,0 +1,15 @@
+version: "3.9"
+services:
+  antibot-developer-trainee:
+    image: antibot-developer-trainee:latest
+    build:
+      target: app
+      dockerfile: Dockerfile
+      context: .
+    environment:
+      PORT: "8088"
+      LIMIT: "10"
+      INTERVAL: "5s"
+      BLOCKING_TIMEOUT: "30s"
+    ports:
+      - "8080:8088"
