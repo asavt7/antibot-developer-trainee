@@ -1,8 +1,10 @@
 package server
 
 import (
+	"errors"
 	"html/template"
 	"log"
+	"net"
 	"net/http"
 	"time"
 )
@@ -17,15 +19,14 @@ func (s *Server) initTemplates() {
 }
 
 func (s *Server) resetHandler(writer http.ResponseWriter, request *http.Request) {
-
-	header, ok := request.Header["X-Forwarded-For"]
-	if !ok || len(header) == 0 {
+	ipv4, err := parseHeaderXForwardedFor(request.Header)
+	if err != nil {
 		writer.WriteHeader(http.StatusBadRequest)
-		writer.Write([]byte("bad request : empty X-Forwarded-For header"))
+		writer.Write([]byte(err.Error()))
 		return
 	}
 
-	err := s.service.ResetPrefixForIpv4(header[0])
+	err = s.service.ResetPrefixForIpv4(ipv4)
 	if err != nil {
 		writer.WriteHeader(http.StatusInternalServerError)
 		writer.Write([]byte(err.Error()))
@@ -34,16 +35,28 @@ func (s *Server) resetHandler(writer http.ResponseWriter, request *http.Request)
 	writer.WriteHeader(http.StatusNoContent)
 }
 
+func parseHeaderXForwardedFor(headers http.Header) (net.IP, error) {
+	header, ok := headers["X-Forwarded-For"]
+	if !ok || len(header) == 0 {
+		return nil, errors.New("bad request : empty X-Forwarded-For header")
+	}
+	ipv4 := net.ParseIP(header[0]).To4()
+	if ipv4 == nil {
+		return nil, errors.New("bad request : invalid X-Forwarded-For header value - expected IPv4 address")
+	}
+	return ipv4, nil
+}
+
 func (s *Server) mainHandler(fs http.Handler) func(http.ResponseWriter, *http.Request) {
 	return func(writer http.ResponseWriter, request *http.Request) {
-		header, ok := request.Header["X-Forwarded-For"]
-		if !ok || len(header) == 0 {
+		ipv4, err := parseHeaderXForwardedFor(request.Header)
+		if err != nil {
 			writer.WriteHeader(http.StatusBadRequest)
-			writer.Write([]byte("bad request : empty X-Forwarded-For header"))
+			writer.Write([]byte(err.Error()))
 			return
 		}
 
-		isBlocked, err := s.service.IsLimitExceededForIp(header[0])
+		isBlocked, err := s.service.IsLimitExceededForIp(ipv4)
 		if err != nil {
 			writer.WriteHeader(http.StatusInternalServerError)
 			writer.Write([]byte(err.Error()))
@@ -62,11 +75,8 @@ func (s *Server) mainHandler(fs http.Handler) func(http.ResponseWriter, *http.Re
 			if err != nil {
 				log.Println(err.Error())
 			}
-
 			return
 		}
-
 		fs.ServeHTTP(writer, request)
 	}
-
 }

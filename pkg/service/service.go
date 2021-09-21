@@ -10,12 +10,20 @@ import (
 )
 
 type RateLimitChecker interface {
-	IsLimitExceededForIp(ipv4Addr string) (bool, error)
-	ResetPrefixForIpv4(ipv4Addr string) error
+	IsLimitExceededForIp(ipv4Addr net.IP) (bool, error)
+	ResetPrefixForIpv4(ipv4Addr net.IP) error
 }
 
 type Service struct {
 	RateLimitChecker
+}
+
+type RateLimitCheckerImpl struct {
+	prefixSize  int
+	mask        net.IPMask
+	limit       int
+	waitingTime time.Duration
+	store       store.RateLimitStore
 }
 
 func parseSubnetSizeToMask(size int) (net.IPMask, error) {
@@ -39,14 +47,6 @@ func parseSubnetSizeToMask(size int) (net.IPMask, error) {
 	return net.IPv4Mask(res[0], res[1], res[2], res[3]), nil
 }
 
-type RateLimitCheckerImpl struct {
-	prefixSize  int
-	mask        net.IPMask
-	limit       int
-	waitingTime time.Duration
-	store       store.RateLimitStore
-}
-
 func NewServiceImpl(conf configs.Config, store store.RateLimitStore) *Service {
 	mask, err := parseSubnetSizeToMask(conf.PrefixSize)
 	if err != nil {
@@ -57,8 +57,8 @@ func NewServiceImpl(conf configs.Config, store store.RateLimitStore) *Service {
 	}
 }
 
-func (s *RateLimitCheckerImpl) IsLimitExceededForIp(ipv4Addr string) (bool, error) {
-	subnet, err := s.parseToSubnet(ipv4Addr)
+func (s *RateLimitCheckerImpl) IsLimitExceededForIp(ipv4Addr net.IP) (bool, error) {
+	subnet, err := s.parseIpToSubnet(ipv4Addr)
 	if err != nil {
 		return false, err
 	}
@@ -66,20 +66,20 @@ func (s *RateLimitCheckerImpl) IsLimitExceededForIp(ipv4Addr string) (bool, erro
 	return isBlocked, nil
 }
 
-func (s *RateLimitCheckerImpl) parseToSubnet(ipv4Addr string) (string, error) {
-	ipv4 := net.ParseIP(ipv4Addr)
-	if ipv4 == nil {
-		return "", errors.New("invalid ipv4 address")
-	}
-	subnet := ipv4.Mask(s.mask).String()
-	return subnet, nil
-}
 
-func (s *RateLimitCheckerImpl) ResetPrefixForIpv4(ipv4Addr string) error {
-	subnet, err := s.parseToSubnet(ipv4Addr)
+func (s *RateLimitCheckerImpl) ResetPrefixForIpv4(ipv4Addr net.IP) error {
+	subnet, err := s.parseIpToSubnet(ipv4Addr)
 	if err != nil {
 		return err
 	}
 	s.store.Reset(subnet)
 	return nil
+}
+
+func (s *RateLimitCheckerImpl) parseIpToSubnet(ip net.IP) (string, error) {
+	subnetIp := ip.Mask(s.mask)
+	if subnetIp == nil {
+		return "", errors.New("invalid ip provided")
+	}
+	return subnetIp.String(), nil
 }
