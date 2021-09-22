@@ -2,7 +2,7 @@ PROJECT_NAME=antibot-developer-trainee
 
 .PHONY: build
 build:
-	CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -v -o bin/main ./cmd/main.go
+	CGO_ENABLED=0 GOOS=linux go build -race -a -installsuffix cgo -v -o bin/main ./cmd/main.go
 
 docker-build:
 	docker build -t ${PROJECT_NAME} .
@@ -17,7 +17,7 @@ run:
 	go run ./cmd/main.go
 
 test-coverage:
-	go test -v -coverprofile=./report/coverage.out -cover `go list ./... | grep -v mocks`
+	go test -race -v -coverprofile=./report/coverage.out -cover `go list ./... | grep -v mocks`
 	go tool cover -func=./report/coverage.out
 	go tool cover -html=./report/coverage.out
 
