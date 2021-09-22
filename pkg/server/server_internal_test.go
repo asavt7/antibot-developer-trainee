@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/asavt7/antibot-developer-trainee/pkg/configs"
+	"github.com/asavt7/antibot-developer-trainee/pkg/mocks"
 	"github.com/asavt7/antibot-developer-trainee/pkg/server"
 	"github.com/asavt7/antibot-developer-trainee/pkg/service"
 	"io/ioutil"
@@ -30,7 +31,7 @@ func (m *mockHandler) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 }
 
 var (
-	mockRateLimitService = &service.RateLimitCheckerMockService{}
+	mockRateLimitService = &mocks.RateLimitCheckerMockService{}
 	mockService          = &service.Service{mockRateLimitService}
 	mockProtectedHandler = &mockHandler{}
 	serv                 = server.NewServer(configs.Config{}, mockService, mockProtectedHandler)

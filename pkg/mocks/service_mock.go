@@ -1,9 +1,8 @@
-package service
+package mocks
 
 import "net"
 
 type RateLimitCheckerMockService struct {
-	IpToCalls                map[string]int
 	IsLimitExceededForIpFunc func(ipv4Addr net.IP) (bool, error)
 	ResetPrefixForIpv4Func   func(ipv4Addr net.IP) error
 }
