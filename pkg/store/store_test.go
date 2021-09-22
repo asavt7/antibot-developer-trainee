@@ -104,4 +104,36 @@ func TestNewInMemoryStoreRateLimitStoreName(t *testing.T) {
 		}
 	})
 
+	t.Run("block on blocking timeout ", func(t *testing.T) {
+		inMemStore, closeStore := initStore(configs.Config{
+			RequestLimit:    1,
+			TimeInterval:    300 * time.Millisecond,
+			BlockingTimeout: 5 * time.Second,
+		})
+		defer closeStore()
+
+		res := inMemStore.Check(subnet)
+		if res {
+			t.Errorf("expected false for 1 req of 1 max per 1 second")
+		}
+		inMemStore.Check(subnet)
+		inMemStore.Check(subnet)
+		inMemStore.Check(subnet)
+		inMemStore.Check(subnet)
+		time.Sleep(100 * time.Millisecond)
+
+		res = inMemStore.Check(subnet)
+		if !res {
+			t.Errorf("expected blocked after spam requests")
+		}
+
+		inMemStore.Reset(subnet)
+		time.Sleep(100 * time.Millisecond)
+
+		res = inMemStore.Check(subnet)
+		if res {
+			t.Errorf("expected unblocked after resetting")
+		}
+	})
+
 }
