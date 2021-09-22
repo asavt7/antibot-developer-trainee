@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"github.com/asavt7/antibot-developer-trainee/pkg/configs"
 	"log"
 	"sync"
@@ -43,11 +44,15 @@ type InMemoryStoreRateLimitStore struct {
 
 	blockSubnetCh   chan string
 	unblockSubnetCh chan string
+
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 func (i *InMemoryStoreRateLimitStore) Check(subnet string) bool {
-
+	i.subnetBlocksMap.RLock()
 	isBlocked, _ := i.subnetBlocksMap.m[subnet]
+	i.subnetBlocksMap.RUnlock()
 	log.Printf("Request for subnet %s isBlocked: %t", subnet, isBlocked)
 	if !isBlocked {
 		i.reqEventCh <- subnet
@@ -61,7 +66,6 @@ func (i *InMemoryStoreRateLimitStore) startReqEventListener() {
 			select {
 			case subnet := <-i.reqEventCh:
 				count, inMap := i.subnetCountMap.m[subnet]
-				log.Printf("reqEventListener got event : subnet %s requestCount %d/%d", subnet, count, i.reqLimit)
 				if !inMap {
 					log.Printf("reqEventListener create timer to reset counter for subnet %s", subnet)
 					i.resetTimerCh <- SubnetTimer{
@@ -69,6 +73,7 @@ func (i *InMemoryStoreRateLimitStore) startReqEventListener() {
 						subnet: subnet,
 					}
 				}
+				log.Printf("reqEventListener got event : subnet %s requestCount %d/%d", subnet, count+1, i.reqLimit)
 				i.subnetCountMap.m[subnet] = count + 1
 
 				if i.subnetCountMap.m[subnet] > i.reqLimit {
@@ -79,6 +84,9 @@ func (i *InMemoryStoreRateLimitStore) startReqEventListener() {
 				if inMap {
 					i.subnetCountMap.m[subnet] = 0
 				}
+			case <-i.ctx.Done():
+				log.Println("Cancelled ReqEventListener")
+				return
 			}
 		}
 	}()
@@ -86,13 +94,19 @@ func (i *InMemoryStoreRateLimitStore) startReqEventListener() {
 
 func (i *InMemoryStoreRateLimitStore) startResetListener() {
 	go func() {
-		for subnetTimer := range i.resetTimerCh {
-			<-subnetTimer.timer.C
-			log.Printf("resetting counter for subnet %s", subnetTimer.subnet)
-			i.resetCounterCh <- subnetTimer.subnet
-			i.resetTimerCh <- SubnetTimer{
-				timer:  time.NewTimer(i.timeLimit),
-				subnet: subnetTimer.subnet,
+		for {
+			select {
+			case subnetTimer := <-i.resetTimerCh:
+				<-subnetTimer.timer.C
+				log.Printf("resetting counter for subnet %s", subnetTimer.subnet)
+				i.resetCounterCh <- subnetTimer.subnet
+				i.resetTimerCh <- SubnetTimer{
+					timer:  time.NewTimer(i.timeLimit),
+					subnet: subnetTimer.subnet,
+				}
+			case <-i.ctx.Done():
+				log.Println("Cancelled ResetListener")
+				return
 			}
 		}
 	}()
@@ -112,6 +126,9 @@ func (i *InMemoryStoreRateLimitStore) startBlockListener() {
 				i.subnetBlocksMap.Lock()
 				i.subnetBlocksMap.m[subnet] = false
 				i.subnetBlocksMap.Unlock()
+			case <-i.ctx.Done():
+				log.Println("Cancelled BlockListener")
+				return
 			}
 		}
 	}()
@@ -134,9 +151,15 @@ func (i *InMemoryStoreRateLimitStore) blockSubnet(subnet string) {
 func (i *InMemoryStoreRateLimitStore) startUnBlockTimerListener() {
 
 	go func() {
-		for subnetTimer := range i.unlockTimeLimitCh {
-			<-subnetTimer.timer.C
-			i.unblockSubnetCh <- subnetTimer.subnet
+		for {
+			select {
+			case subnetTimer := <-i.unlockTimeLimitCh:
+				<-subnetTimer.timer.C
+				i.unblockSubnetCh <- subnetTimer.subnet
+			case <-i.ctx.Done():
+				log.Println("Cancelled UnBlockTimerListener")
+				return
+			}
 		}
 	}()
 }
@@ -148,7 +171,12 @@ func (i *InMemoryStoreRateLimitStore) InitStore() {
 	i.startResetListener()
 }
 
+func (i *InMemoryStoreRateLimitStore) CloseStore() {
+	i.cancel()
+}
+
 func NewInMemoryStoreRateLimitStore(conf configs.Config) *InMemoryStoreRateLimitStore {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &InMemoryStoreRateLimitStore{
 		subnetBlocksMap:   SubnetBlocksMap{m: make(map[string]bool)},
 		subnetCountMap:    SubnetCountMap{m: make(map[string]int)},
@@ -162,5 +190,7 @@ func NewInMemoryStoreRateLimitStore(conf configs.Config) *InMemoryStoreRateLimit
 		resetTimerCh:      make(chan SubnetTimer, 1000),
 		blockSubnetCh:     make(chan string, 1000),
 		unblockSubnetCh:   make(chan string, 1000),
+		ctx:               ctx,
+		cancel:            cancel,
 	}
 }
