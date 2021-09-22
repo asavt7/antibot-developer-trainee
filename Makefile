@@ -16,4 +16,7 @@ down:
 run:
 	go run ./cmd/main.go
 
+test-coverage:
+	go test -coverprofile=./report/coverage.out -cover ./... && go tool cover -html=./report/coverage.out
+
 .DEFAULT_GOAL := build

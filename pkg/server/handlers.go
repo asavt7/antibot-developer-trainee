@@ -9,13 +9,19 @@ import (
 	"time"
 )
 
-func (s *Server) initTemplates() {
+var ToManyReqTemplate *template.Template
+
+func init() {
+	initTemplates()
+}
+
+func initTemplates() {
 	tmpl, err := template.New("429").Parse(" <html>\n<head>\n<title>Too Many Requests</title>\n</head>\n<body>\n<h1>Too Many Requests</h1>\n" +
 		"<p>It's only allowed {{ .RequestLimit}} requests per {{ .Minutes}} to this Web site per\nsubnet.  Try again soon.</p>\n      </body>\n   </html>")
 	if err != nil {
 		log.Fatal(err)
 	}
-	s.toManyReqTempl = *tmpl
+	ToManyReqTemplate = tmpl
 }
 
 func (s *Server) resetHandler(writer http.ResponseWriter, request *http.Request) {
@@ -49,6 +55,11 @@ func parseHeaderXForwardedFor(headers http.Header) (net.IP, error) {
 
 func (s *Server) mainHandler(fs http.Handler) func(http.ResponseWriter, *http.Request) {
 	return func(writer http.ResponseWriter, request *http.Request) {
+		if request.RequestURI != "/" {
+			writer.WriteHeader(http.StatusNotFound)
+			return
+		}
+
 		ipv4, err := parseHeaderXForwardedFor(request.Header)
 		if err != nil {
 			writer.WriteHeader(http.StatusBadRequest)
@@ -65,7 +76,7 @@ func (s *Server) mainHandler(fs http.Handler) func(http.ResponseWriter, *http.Re
 
 		if isBlocked {
 			writer.WriteHeader(http.StatusTooManyRequests)
-			err = s.toManyReqTempl.Execute(writer, struct {
+			err = ToManyReqTemplate.Execute(writer, struct {
 				RequestLimit int
 				Minutes      time.Duration
 			}{

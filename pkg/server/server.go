@@ -17,9 +17,7 @@ type Server struct {
 	config configs.Config
 }
 
-func NewServer(config configs.Config, service *service.Service) *Server {
-	fs := http.FileServer(http.Dir("./static"))
-
+func NewServer(config configs.Config, service *service.Service, protectedHandler http.Handler) *Server {
 	mux := http.NewServeMux()
 
 	server := &http.Server{
@@ -34,10 +32,9 @@ func NewServer(config configs.Config, service *service.Service) *Server {
 		service:        service,
 		config:         config,
 	}
-	s.initTemplates()
 
 	mux.HandleFunc("/reset", s.resetHandler)
-	mux.HandleFunc("/", s.mainHandler(fs))
+	mux.HandleFunc("/", s.mainHandler(protectedHandler))
 
 	return s
 }

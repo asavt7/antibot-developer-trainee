@@ -6,6 +6,7 @@ import (
 	"github.com/asavt7/antibot-developer-trainee/pkg/service"
 	"github.com/asavt7/antibot-developer-trainee/pkg/store"
 	"log"
+	"net/http"
 )
 
 func main() {
@@ -15,7 +16,8 @@ func main() {
 	inMemStore.InitStore()
 
 	rateLimitService := service.NewServiceImpl(conf, inMemStore)
-	serv := server.NewServer(conf, rateLimitService)
+
+	serv := server.NewServer(conf, rateLimitService, http.FileServer(http.Dir("./static")))
 
 	err := serv.RunServer()
 	if err != nil {
