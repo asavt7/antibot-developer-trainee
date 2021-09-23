@@ -35,8 +35,8 @@ func NewServer(config configs.Config, service *service.Service, protectedHandler
 	}
 
 	mux.HandleFunc("/reset", prometheusMiddleware(s.resetHandler).ServeHTTP)
-	mux.HandleFunc("/", prometheusMiddleware(s.mainHandler(protectedHandler)).ServeHTTP)
 	mux.HandleFunc("/metrics", promhttp.Handler().ServeHTTP)
+	mux.HandleFunc("/", prometheusMiddleware(s.mainHandler(protectedHandler)).ServeHTTP)
 
 	return s
 }
