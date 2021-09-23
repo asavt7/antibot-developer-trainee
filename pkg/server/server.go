@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/asavt7/antibot-developer-trainee/pkg/configs"
 	"github.com/asavt7/antibot-developer-trainee/pkg/service"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"html/template"
 	"log"
 	"net/http"
@@ -14,7 +15,7 @@ type Server struct {
 	http.Server
 	service        *service.Service
 	toManyReqTempl template.Template
-	config configs.Config
+	config         configs.Config
 }
 
 func NewServer(config configs.Config, service *service.Service, protectedHandler http.Handler) *Server {
@@ -28,13 +29,14 @@ func NewServer(config configs.Config, service *service.Service, protectedHandler
 	}
 
 	s := &Server{
-		Server:         *server,
-		service:        service,
-		config:         config,
+		Server:  *server,
+		service: service,
+		config:  config,
 	}
 
-	mux.HandleFunc("/reset", s.resetHandler)
-	mux.HandleFunc("/", s.mainHandler(protectedHandler))
+	mux.HandleFunc("/reset", prometheusMiddleware(s.resetHandler).ServeHTTP)
+	mux.HandleFunc("/", prometheusMiddleware(s.mainHandler(protectedHandler)).ServeHTTP)
+	mux.HandleFunc("/metrics", promhttp.Handler().ServeHTTP)
 
 	return s
 }
